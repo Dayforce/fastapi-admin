@@ -56,9 +56,18 @@ def _get_resources(resources: List[Type[Resource]]):
     return ret
 
 
-def get_resources(request: Request) -> List[dict]:
+async def get_resources(request: Request) -> List[dict]:
     resources = request.app.resources
-    return _get_resources(resources)
+    resources_data = _get_resources(resources)
+    
+    # Если есть провайдер разрешений, фильтруем ресурсы по доступу
+    admin = getattr(request.state, "admin", None)
+    provider = getattr(request.state, "permission_provider", None)
+    
+    if provider and admin:
+        return await provider.filter_model_resources(admin, resources_data)
+    
+    return resources_data
 
 
 def get_redis(request: Request):

@@ -1,0 +1,139 @@
+{% extends 'layout.html' %}
+
+{% block body %}
+<div class="row mb-3">
+    <div class="col-md-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <h2>Редактирование роли: {{ role.name }}</h2>
+            <a href="{{ url_for('roles_list') }}" class="btn btn-secondary">
+                <i class="ti ti-arrow-left"></i> Вернуться к списку ролей
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body">
+                <form id="role-form">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Название</label>
+                        <input type="text" class="form-control" id="name" name="name" value="{{ role.name }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Описание</label>
+                        <textarea class="form-control" id="description" name="description" rows="3">{{ role.description or '' }}</textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Разрешения</label>
+                        <div class="table-responsive">
+                            <table class="table table-vcenter card-table">
+                                <thead>
+                                    <tr>
+                                        <th class="w-1">
+                                            <input type="checkbox" id="select-all" class="form-check-input">
+                                        </th>
+                                        <th>Модель</th>
+                                        <th>Действие</th>
+                                        <th>Поля</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for permission in all_permissions %}
+                                    <tr>
+                                        <td>
+                                            <input type="checkbox" 
+                                                   name="permissions" 
+                                                   value="{{ permission.id }}" 
+                                                   class="form-check-input permission-checkbox"
+                                                   {% if permission.id in role_permission_ids %}checked{% endif %}>
+                                        </td>
+                                        <td>{{ permission.model_resource }}</td>
+                                        <td>{{ permission.action }}</td>
+                                        <td>
+                                            {% if permission.fields and permission.fields.allowed %}
+                                                {{ permission.fields.allowed|join(', ') }}
+                                            {% else %}
+                                                <span class="text-muted">Все поля</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% else %}
+                                    <tr>
+                                        <td colspan="4" class="text-center">Нет доступных разрешений</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <button type="button" class="btn btn-primary" id="submit-button">Сохранить</button>
+                        <a href="{{ url_for('roles_list') }}" class="btn btn-outline-secondary">Отмена</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('role-form');
+        const submitButton = document.getElementById('submit-button');
+        const selectAllCheckbox = document.getElementById('select-all');
+        const permissionCheckboxes = document.querySelectorAll('.permission-checkbox');
+        
+        // Обработчик "Выбрать все"
+        selectAllCheckbox.addEventListener('change', function() {
+            permissionCheckboxes.forEach(checkbox => {
+                checkbox.checked = selectAllCheckbox.checked;
+            });
+        });
+        
+        // Обработка отправки формы
+        submitButton.addEventListener('click', function() {
+            if (form.checkValidity()) {
+                // Собираем выбранные ID разрешений
+                const selectedPermissions = [];
+                permissionCheckboxes.forEach(checkbox => {
+                    if (checkbox.checked) {
+                        selectedPermissions.push(parseInt(checkbox.value));
+                    }
+                });
+                
+                const formData = {
+                    name: document.getElementById('name').value,
+                    description: document.getElementById('description').value,
+                    permissions: selectedPermissions
+                };
+                
+                fetch('/api/roles/{{ role.id }}', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        window.location.href = "{{ url_for('roles_list') }}";
+                    } else {
+                        alert('Ошибка при обновлении роли: ' + (data.error || 'Неизвестная ошибка'));
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Ошибка при обновлении роли');
+                });
+            } else {
+                form.reportValidity();
+            }
+        });
+    });
+</script>
+{% endblock %} 

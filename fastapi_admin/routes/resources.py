@@ -10,6 +10,8 @@ from tortoise.fields import ManyToManyRelation
 from tortoise.transactions import in_transaction
 
 from fastapi_admin.depends import get_model, get_model_resource, get_resources
+from fastapi_admin.models import PermissionAction
+from fastapi_admin.providers.permissions import check_model_permission
 from fastapi_admin.resources import Model as ModelResource
 from fastapi_admin.resources import render_values
 from fastapi_admin.responses import redirect
@@ -28,9 +30,10 @@ async def list_view(
     page_size: int = 10,
     page_num: int = 1,
     order_by: Optional[str] = None,
+    _: bool = Depends(lambda r: check_model_permission(r, PermissionAction.READ)),
 ):
     fields_label = model_resource.get_fields_label()
-    fields = model_resource.get_fields()
+    fields = await model_resource._filter_fields_by_permission(request, PermissionAction.READ)
     fk_fields = model_resource.get_fk_field()
     qs = model.all()
     params, qs = await model_resource.resolve_query_params(request, dict(request.query_params), qs)
@@ -102,6 +105,7 @@ async def update(
     model_resource: ModelResource = Depends(get_model_resource),
     resources=Depends(get_resources),
     model=Depends(get_model),
+    _: bool = Depends(lambda r: check_model_permission(r, PermissionAction.UPDATE)),
 ):
     form = await request.form()
     data, m2m_data = await model_resource.resolve_data(request, form)
@@ -161,6 +165,7 @@ async def update_view(
     model_resource: ModelResource = Depends(get_model_resource),
     resources=Depends(get_resources),
     model=Depends(get_model),
+    _: bool = Depends(lambda r: check_model_permission(r, PermissionAction.UPDATE)),
 ):
     obj = await model.get(pk=pk)
     inputs = await model_resource.get_inputs(request, obj)
@@ -193,6 +198,7 @@ async def create_view(
     resource: str = Path(...),
     resources=Depends(get_resources),
     model_resource: ModelResource = Depends(get_model_resource),
+    _: bool = Depends(lambda r: check_model_permission(r, PermissionAction.CREATE)),
 ):
     inputs = await model_resource.get_inputs(request)
     context = {
@@ -224,46 +230,37 @@ async def create(
     resources=Depends(get_resources),
     model_resource: ModelResource = Depends(get_model_resource),
     model=Depends(get_model),
+    _: bool = Depends(lambda r: check_model_permission(r, PermissionAction.CREATE)),
 ):
-    inputs = await model_resource.get_inputs(request)
     form = await request.form()
     data, m2m_data = await model_resource.resolve_data(request, form)
-    async with in_transaction() as conn:
-        obj = await model.create(**data, using_db=conn)
+    obj = await model.create(**data)
         for k, items in m2m_data.items():
-            m2m_obj = getattr(obj, k)  # type:ManyToManyRelation
-            await m2m_obj.add(*items, using_db=conn)
-    if "save" in form.keys():
+        m2m_obj = getattr(obj, k)
+        if items:
+            await m2m_obj.add(*items)
+    if "save" in form:
+        return redirect(request, "update_view", resource=resource, pk=obj.pk)
         return redirect(request, "list_view", resource=resource)
-    context = {
-        "request": request,
-        "resources": resources,
-        "resource_label": model_resource.label,
-        "resource": resource,
-        "inputs": inputs,
-        "model_resource": model_resource,
-        "page_title": model_resource.page_title,
-        "page_pre_title": model_resource.page_pre_title,
-    }
-    try:
-        return templates.TemplateResponse(
-            f"{resource}/create.html",
-            context=context,
-        )
-    except TemplateNotFound:
-        return templates.TemplateResponse(
-            "create.html",
-            context=context,
-        )
 
 
 @router.delete("/{resource}/delete/{pk}")
-async def delete(request: Request, pk: str, model: Model = Depends(get_model)):
+async def delete(
+    request: Request, 
+    pk: str, 
+    model: Model = Depends(get_model),
+    resource: str = Path(...),
+    _: bool = Depends(lambda r: check_model_permission(r, PermissionAction.DELETE)),
+):
     await model.filter(pk=pk).delete()
-    return RedirectResponse(url=request.headers.get("referer"), status_code=HTTP_303_SEE_OTHER)
 
 
 @router.delete("/{resource}/delete")
-async def bulk_delete(request: Request, ids: str, model: Model = Depends(get_model)):
+async def bulk_delete(
+    request: Request, 
+    ids: str, 
+    model: Model = Depends(get_model),
+    resource: str = Path(...),
+    _: bool = Depends(lambda r: check_model_permission(r, PermissionAction.DELETE)),
+):
     await model.filter(pk__in=ids.split(",")).delete()
-    return RedirectResponse(url=request.headers.get("referer"), status_code=HTTP_303_SEE_OTHER)

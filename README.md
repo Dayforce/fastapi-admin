@@ -15,6 +15,18 @@
 and [TortoiseORM](https://github.com/tortoise/tortoise-orm/) with [tabler](https://github.com/tabler/tabler) ui,
 inspired by Django admin.
 
+This fork adds a code-based role management system that allows developers to define and control access permissions directly in code rather than through database models.
+
+## Features
+
+- Standard FastAPI-Admin features
+- Extended role-based access control:
+  - Define roles and permissions directly in code
+  - Control access at model, action, and field levels
+  - No database configuration for permissions needed
+  - Better security and version control for roles
+  - Multiple predefined role types and creation helpers
+
 ## Installation
 
 ```shell
@@ -36,6 +48,37 @@ Or pro version online demo [here](https://fastapi-admin-pro.long2ice.io/admin/lo
 
 - username: `admin`
 - password: `123456`
+
+## Role-Based Access Control
+
+This fork implements a code-based permission system that allows defining roles and permissions in code:
+
+```python
+# Define a role with specific permissions
+EDITOR_ROLE = Role(
+    name="editor",
+    permissions=[
+        Permission(model_name="category", action=PermissionAction.READ),
+        Permission(model_name="category", action=PermissionAction.CREATE),
+        Permission(model_name="category", action=PermissionAction.UPDATE),
+        Permission(model_name="product", action=PermissionAction.READ),
+    ]
+)
+
+# Register the role
+register_role(EDITOR_ROLE)
+
+# Use helper functions to create common roles
+CATALOG_VIEWER = create_viewer_role(["category", "product"])
+```
+
+To use the role-based system:
+
+1. Define roles in your application
+2. Register the `CodePermissionProvider` in your app
+3. Assign roles to administrators through the `role_names` field
+
+See `examples/code_based_auth.py` for a complete example.
 
 ## Screenshots
 

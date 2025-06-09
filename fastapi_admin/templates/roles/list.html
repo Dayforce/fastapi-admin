@@ -1,0 +1,90 @@
+{% extends 'layout.html' %}
+
+{% block body %}
+<div class="row mb-3">
+    <div class="col-md-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <h2>Список ролей</h2>
+            <a href="{{ url_for('roles_create_view') }}" class="btn btn-primary">
+                <i class="ti ti-plus"></i> Создать роль
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="table-responsive">
+                <table class="table table-vcenter card-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Название</th>
+                            <th>Описание</th>
+                            <th class="w-1"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for role in roles %}
+                        <tr>
+                            <td>{{ role.id }}</td>
+                            <td>{{ role.name }}</td>
+                            <td>{{ role.description or '' }}</td>
+                            <td>
+                                <div class="btn-group">
+                                    <a href="{{ url_for('role_edit_view', role_id=role.id) }}" class="btn btn-sm btn-outline-primary">
+                                        <i class="ti ti-edit"></i>
+                                    </a>
+                                    <button type="button" class="btn btn-sm btn-outline-danger delete-role" data-id="{{ role.id }}">
+                                        <i class="ti ti-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="text-center">Нет доступных ролей</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Обработка удаления роли
+        const deleteButtons = document.querySelectorAll('.delete-role');
+        deleteButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                const roleId = this.dataset.id;
+                if (confirm('Вы уверены, что хотите удалить эту роль?')) {
+                    fetch(`/api/roles/${roleId}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            window.location.reload();
+                        } else {
+                            alert('Ошибка при удалении роли');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Ошибка при удалении роли');
+                    });
+                }
+            });
+        });
+    });
+</script>
+{% endblock %} 

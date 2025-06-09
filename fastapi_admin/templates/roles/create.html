@@ -1,0 +1,74 @@
+{% extends 'layout.html' %}
+
+{% block body %}
+<div class="row mb-3">
+    <div class="col-md-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <h2>Создание роли</h2>
+            <a href="{{ url_for('roles_list') }}" class="btn btn-secondary">
+                <i class="ti ti-arrow-left"></i> Вернуться к списку ролей
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body">
+                <form id="role-form">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Название</label>
+                        <input type="text" class="form-control" id="name" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Описание</label>
+                        <textarea class="form-control" id="description" name="description" rows="3"></textarea>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <button type="button" class="btn btn-primary" id="submit-button">Сохранить</button>
+                        <a href="{{ url_for('roles_list') }}" class="btn btn-outline-secondary">Отмена</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('role-form');
+        const submitButton = document.getElementById('submit-button');
+        
+        submitButton.addEventListener('click', function() {
+            if (form.checkValidity()) {
+                const formData = {
+                    name: document.getElementById('name').value,
+                    description: document.getElementById('description').value
+                };
+                
+                fetch('/api/roles', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Если успешно, переходим к списку ролей
+                    window.location.href = "{{ url_for('roles_list') }}";
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Ошибка при создании роли');
+                });
+            } else {
+                form.reportValidity();
+            }
+        });
+    });
+</script>
+{% endblock %} 

@@ -1,0 +1,121 @@
+{% extends "layout.html" %}
+
+{% block header %}
+<div class="container-xl">
+  <div class="page-header d-print-none">
+    <div class="row align-items-center">
+      <div class="col">
+        <h2 class="page-title">{{ page_title }}</h2>
+        <div class="page-pretitle">{{ page_pre_title }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="container-xl">
+  <div class="row row-cards">
+    <div class="col-12">
+      <form id="permissionForm" class="card">
+        <div class="card-header">
+          <h3 class="card-title">Данные разрешения</h3>
+        </div>
+        <div class="card-body">
+          <div class="mb-3">
+            <label class="form-label required">Ресурс модели</label>
+            <select name="model_resource" class="form-select" required>
+              <option value="">Выберите ресурс</option>
+              {% for model in available_models %}
+              <option value="{{ model }}" {% if permission.model_resource == model %}selected{% endif %}>{{ model }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label required">Действие</label>
+            <select name="action" class="form-select" required>
+              {% for action in actions %}
+              <option value="{{ action }}" {% if permission.action == action %}selected{% endif %}>{{ action }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Разрешенные поля (JSON)</label>
+            <div class="form-hint">Оставьте пустым для всех полей или укажите {"allowed": ["field1", "field2"]}</div>
+            <textarea name="fields" class="form-control" rows="3">{{ permission.fields|tojson }}</textarea>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Условия (JSON)</label>
+            <div class="form-hint">Дополнительные условия доступа к ресурсу в формате JSON</div>
+            <textarea name="conditions" class="form-control" rows="3">{{ permission.conditions|tojson }}</textarea>
+          </div>
+        </div>
+        <div class="card-footer text-end">
+          <a href="/admin/permissions" class="btn btn-link">Отмена</a>
+          <button type="submit" class="btn btn-primary">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const form = document.getElementById('permissionForm');
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(form);
+    let fieldsStr = formData.get('fields');
+    let conditionsStr = formData.get('conditions');
+    
+    let fields = {};
+    let conditions = {};
+    
+    try {
+      fields = JSON.parse(fieldsStr);
+    } catch(e) {
+      alert('Ошибка в формате полей JSON');
+      return;
+    }
+    
+    try {
+      conditions = JSON.parse(conditionsStr);
+    } catch(e) {
+      alert('Ошибка в формате условий JSON');
+      return;
+    }
+    
+    const data = {
+      model_resource: formData.get('model_resource'),
+      action: formData.get('action'),
+      fields: fields,
+      conditions: conditions
+    };
+    
+    fetch('/admin/api/permissions/{{ permission.id }}', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(data)
+    })
+    .then(function(response) {
+      return response.json();
+    })
+    .then(function(result) {
+      if(result.success) {
+        window.location.href = '/admin/permissions';
+      } else if(result.detail) {
+        alert(result.detail);
+      } else {
+        alert('Произошла ошибка при обновлении разрешения');
+      }
+    })
+    .catch(function(error) {
+      alert('Ошибка: ' + error);
+    });
+  });
+});
+</script>
+{% endblock %} 

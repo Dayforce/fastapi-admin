@@ -1,42 +1,44 @@
-import datetime
+from datetime import datetime
 
-from tortoise import Model, fields
+from tortoise import fields
 
-from examples.enums import ProductType, Status
-from fastapi_admin.models import AbstractAdmin
+from fastapi_admin.models import AbstractAdmin, Role
 
 
 class Admin(AbstractAdmin):
-    last_login = fields.DatetimeField(description="Last Login", default=datetime.datetime.now)
-    email = fields.CharField(max_length=200, default="")
-    avatar = fields.CharField(max_length=200, default="")
-    intro = fields.TextField(default="")
-    created_at = fields.DatetimeField(auto_now_add=True)
+    created_at = fields.DatetimeField(default=datetime.now)
 
-    def __str__(self):
-        return f"{self.pk}#{self.username}"
+    class Meta:
+        table = "admin"
+        ordering = ["-created_at"]
 
 
-class Category(Model):
-    slug = fields.CharField(max_length=200)
-    name = fields.CharField(max_length=200)
-    created_at = fields.DatetimeField(auto_now_add=True)
-
-
-class Product(Model):
-    categories = fields.ManyToManyField("models.Category")
+class Category(fields.Model):
     name = fields.CharField(max_length=50)
-    view_num = fields.IntField(description="View Num")
-    sort = fields.IntField()
-    is_reviewed = fields.BooleanField(description="Is Reviewed")
-    type = fields.IntEnumField(ProductType, description="Product Type")
-    image = fields.CharField(max_length=200)
-    body = fields.TextField()
-    created_at = fields.DatetimeField(auto_now_add=True)
+    slug = fields.CharField(max_length=100, unique=True)
+    product_type = fields.CharField(max_length=20)
+    created_at = fields.DatetimeField(default=datetime.now)
+
+    class Meta:
+        table = "category"
 
 
-class Config(Model):
-    label = fields.CharField(max_length=200)
-    key = fields.CharField(max_length=20, unique=True, description="Unique key for config")
+class Product(fields.Model):
+    name = fields.CharField(max_length=100)
+    slug = fields.CharField(max_length=200, unique=True)
+    description = fields.TextField()
+    price = fields.DecimalField(max_digits=10, decimal_places=2)
+    category = fields.ForeignKeyField("models.Category", related_name="products")
+    image = fields.CharField(max_length=200, null=True)
+    created_at = fields.DatetimeField(default=datetime.now)
+
+    class Meta:
+        table = "product"
+
+
+class Config(fields.Model):
+    key = fields.CharField(max_length=100, unique=True)
     value = fields.JSONField()
-    status: Status = fields.IntEnumField(Status, default=Status.on)
+
+    class Meta:
+        table = "config"

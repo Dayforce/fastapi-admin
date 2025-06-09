@@ -11,6 +11,7 @@ from fastapi_admin.enums import Method
 from fastapi_admin.file_upload import FileUpload
 from fastapi_admin.resources import Action, Dropdown, Field, Link, Model, ToolbarAction
 from fastapi_admin.widgets import displays, filters, inputs
+from fastapi_admin.models import Permission, Role
 
 upload = FileUpload(uploads_dir=os.path.join(BASE_DIR, "static", "uploads"))
 
@@ -24,37 +25,41 @@ class Dashboard(Link):
 
 @app.register
 class AdminResource(Model):
-    label = "Admin"
     model = Admin
     icon = "fas fa-user"
-    page_pre_title = "admin list"
-    page_title = "admin model"
+    label = "Администраторы"
+    page_pre_title = "Управление пользователями"
+    page_title = "Список администраторов"
     filters = [
-        filters.Search(
-            name="username",
-            label="Name",
-            search_mode="contains",
-            placeholder="Search for username",
-        ),
-        filters.Date(name="created_at", label="CreatedAt"),
+        "username",
     ]
     fields = [
         "id",
         "username",
         Field(
             name="password",
-            label="Password",
+            label="Пароль",
             display=displays.InputOnly(),
             input_=inputs.Password(),
         ),
-        Field(name="email", label="Email", input_=inputs.Email()),
         Field(
-            name="avatar",
-            label="Avatar",
-            display=displays.Image(width="40"),
-            input_=inputs.Image(null=True, upload=upload),
+            name="roles",
+            label="Роли",
+            display=displays.ManyToMany(
+                Row="name",
+            ),
+            input_=inputs.ManyToMany(
+                model=Role, 
+                value_field="id",
+                display_field="name",
+            ),
         ),
-        "created_at",
+        Field(
+            name="created_at",
+            label="Дата создания",
+            display=displays.DatetimeDisplay(),
+            input_=inputs.DisplayOnly(),
+        ),
     ]
 
     async def get_toolbar_actions(self, request: Request) -> List[ToolbarAction]:
@@ -75,26 +80,40 @@ class AdminResource(Model):
 @app.register
 class Content(Dropdown):
     class CategoryResource(Model):
-        label = "Category"
         model = Category
-        fields = ["id", "name", "slug", "created_at"]
-
-    class ProductResource(Model):
-        label = "Product"
-        model = Product
+        icon = "fas fa-list"
+        label = "Категории"
+        page_pre_title = "Управление категориями"
+        page_title = "Список категорий"
         filters = [
-            filters.Enum(enum=enums.ProductType, name="type", label="ProductType"),
-            filters.Datetime(name="created_at", label="CreatedAt"),
+            "name",
+            "product_type",
         ]
         fields = [
             "id",
             "name",
-            "view_num",
-            "sort",
-            "is_reviewed",
-            "type",
-            Field(name="image", label="Image", display=displays.Image(width="40")),
-            Field(name="body", label="Body", input_=inputs.Editor()),
+            "slug",
+            "product_type",
+        ]
+
+    class ProductResource(Model):
+        model = Product
+        icon = "fas fa-box"
+        label = "Товары"
+        page_pre_title = "Управление товарами"
+        page_title = "Список товаров"
+        filters = [
+            "name",
+            "category__name",
+        ]
+        fields = [
+            "id",
+            "name",
+            "slug",
+            "description",
+            "price",
+            "category",
+            "image",
             "created_at",
         ]
 
@@ -105,23 +124,19 @@ class Content(Dropdown):
 
 @app.register
 class ConfigResource(Model):
-    label = "Config"
     model = Config
     icon = "fas fa-cogs"
+    label = "Настройки"
+    page_pre_title = "Управление настройками"
+    page_title = "Настройки системы"
     filters = [
-        filters.Enum(enum=enums.Status, name="status", label="Status"),
-        filters.Search(name="key", label="Key", search_mode="equal"),
+        "key",
+        "value",
     ]
     fields = [
         "id",
-        "label",
         "key",
         "value",
-        Field(
-            name="status",
-            label="Status",
-            input_=inputs.RadioEnum(enums.Status, default=enums.Status.on),
-        ),
     ]
 
     async def row_attributes(self, request: Request, obj: dict) -> dict:
@@ -163,3 +178,59 @@ class ProLink(Link):
     url = "https://fastapi-admin-pro.long2ice.io/admin/login"
     icon = "far fa-heart"
     target = "_blank"
+
+
+class RoleResource(Model):
+    model = Role
+    icon = "fas fa-user-tag"
+    label = "Роли"
+    page_pre_title = "Управление ролями"
+    page_title = "Список ролей"
+    filters = [
+        "name",
+    ]
+    fields = [
+        "id",
+        "name",
+        "description",
+        Field(
+            name="permissions",
+            label="Разрешения",
+            display=displays.ManyToMany(
+                Row=lambda x: f"{x.model_resource}:{x.action}",
+            ),
+            input_=inputs.ManyToMany(
+                model=Permission,
+                value_field="id",
+                display_field=lambda x: f"{x.model_resource}:{x.action}",
+            ),
+        ),
+    ]
+
+
+class PermissionResource(Model):
+    model = Permission
+    icon = "fas fa-shield-alt"
+    label = "Разрешения"
+    page_pre_title = "Управление разрешениями"
+    page_title = "Список разрешений"
+    filters = [
+        "model_resource",
+    ]
+    fields = [
+        "id",
+        "model_resource",
+        "action",
+        Field(
+            name="fields",
+            label="Поля",
+            display=displays.Json(),
+            input_=inputs.Json(),
+        ),
+        Field(
+            name="conditions",
+            label="Условия",
+            display=displays.Json(),
+            input_=inputs.Json(),
+        ),
+    ]

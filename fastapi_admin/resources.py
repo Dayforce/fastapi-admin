@@ -12,6 +12,7 @@ from tortoise.queryset import QuerySet
 from fastapi_admin.enums import Method
 from fastapi_admin.exceptions import NoSuchFieldFound
 from fastapi_admin.i18n import _
+from fastapi_admin.models import PermissionAction
 from fastapi_admin.widgets import Widget, displays, inputs
 from fastapi_admin.widgets.filters import Filter, Search
 
@@ -86,6 +87,10 @@ class Model(Resource):
     filters: List[Union[str, Filter]] = []
 
     async def get_toolbar_actions(self, request: Request) -> List[ToolbarAction]:
+        # Проверяем права на создание
+        if not await self._has_action_permission(request, PermissionAction.CREATE):
+            return []
+        
         return [
             ToolbarAction(
                 label=_("create"),
@@ -106,15 +111,38 @@ class Model(Resource):
     async def cell_attributes(self, request: Request, obj: dict, field: Field) -> dict:
         return {}
 
+    async def _has_action_permission(self, request: Request, action: PermissionAction) -> bool:
+        """Проверка прав на действие с учетом провайдера разрешений"""
+        admin = request.state.admin
+        provider = getattr(request.state, "permission_provider", None)
+        if not provider or not admin:
+            return True  # Если провайдер не зарегистрирован, считаем что доступ разрешен
+        
+        model_name = self.model.__name__.lower()
+        return await provider.has_permission(admin, model_name, action)
+
     async def get_actions(self, request: Request) -> List[Action]:
-        return [
-            Action(
+        actions = []
+        
+        # Проверяем права на обновление
+        if await self._has_action_permission(request, PermissionAction.UPDATE):
+            actions.append(Action(
                 label=_("update"), icon="ti ti-edit", name="update", method=Method.GET, ajax=False
-            ),
-            Action(label=_("delete"), icon="ti ti-trash", name="delete", method=Method.DELETE),
-        ]
+            ))
+        
+        # Проверяем права на удаление
+        if await self._has_action_permission(request, PermissionAction.DELETE):
+            actions.append(Action(
+                label=_("delete"), icon="ti ti-trash", name="delete", method=Method.DELETE
+            ))
+        
+        return actions
 
     async def get_bulk_actions(self, request: Request) -> List[Action]:
+        # Проверяем права на удаление
+        if not await self._has_action_permission(request, PermissionAction.DELETE):
+            return []
+            
         return [
             Action(
                 label=_("delete_selected"),
@@ -126,8 +154,11 @@ class Model(Resource):
 
     @classmethod
     async def get_inputs(cls, request: Request, obj: Optional[TortoiseModel] = None):
+        # Фильтруем поля по правам доступа
+        fields = await cls._filter_fields_by_permission(request, PermissionAction.UPDATE if obj else PermissionAction.CREATE)
+        
         ret = []
-        for field in cls.get_fields(is_display=False):
+        for field in fields:
             input_ = field.input
             name = input_.context.get("name")
             if isinstance(input_, inputs.DisplayOnly):
@@ -164,7 +195,16 @@ class Model(Resource):
     async def resolve_data(cls, request: Request, data: FormData):
         ret = {}
         m2m_ret = {}
-        for field in cls.get_fields(is_display=False):
+        
+        # Фильтруем поля по правам доступа
+        fields = await cls._filter_fields_by_permission(
+            request, 
+            PermissionAction.CREATE if not data.get("id") else PermissionAction.UPDATE
+        )
+        
+        field_names = [field.name for field in fields]
+        
+        for field in fields:
             input_ = field.input
             if input_.context.get("disabled") or isinstance(input_, inputs.DisplayOnly):
                 continue
@@ -201,116 +241,122 @@ class Model(Resource):
     @classmethod
     def _get_fields_attr(cls, attr: str, display: bool = True):
         ret = []
-        for field in cls.get_fields():
-            if display and isinstance(field.display, displays.InputOnly):
-                continue
+        for field in cls.get_fields(is_display=display):
             ret.append(getattr(field, attr))
-        return ret or cls.model._meta.db_fields
+        return ret
 
     @classmethod
     def get_fields_name(cls, display: bool = True):
-        return cls._get_fields_attr("name", display)
+        return cls._get_fields_attr("name", display=display)
 
     @classmethod
     def _get_display_input_field(cls, field_name: str) -> Field:
-        fields_map = cls.model._meta.fields_map
-        field = fields_map.get(field_name)
-        if not field:
-            raise NoSuchFieldFound(f"Can't found field '{field_name}' in model {cls.model}")
-        label = field_name
-        null = field.null
-        placeholder = field.description or ""
-        display, input_ = displays.Display(), inputs.Input(
-            placeholder=placeholder, null=null, default=field.default
-        )
-        if field.pk or field.generated:
-            display, input_ = displays.Display(), inputs.DisplayOnly()
-        elif isinstance(field, BooleanField):
-            display, input_ = displays.Boolean(), inputs.Switch(null=null, default=field.default)
-        elif isinstance(field, DatetimeField):
-            if field.auto_now or field.auto_now_add:
-                input_ = inputs.DisplayOnly()
+        field_model_map = {}
+        field_name_origin = field_name
+        try:
+            field_model = cls.model._meta.fields_map[field_name]
+            field_model_map[field_name] = field_model
+        except KeyError:
+            if "." in field_name:
+                field_model = cls.model
+                field_schema = []
+                for field_ in field_name.split("."):
+                    try:
+                        field_model = field_model._meta.fields_map[field_]
+                        field_schema.append(field_model)
+                    except (KeyError, AttributeError):
+                        break
+                field_model_map[field_name] = field_schema[-1]
+        try:
+            field_model = field_model_map[field_name]
+        except KeyError:
+            raise NoSuchFieldFound(field_name)
+        display = None
+        input_ = None
+        if isinstance(field_model, (DatetimeField, DateField)):
+            display = displays.DatetimeDisplay()
+            input_ = inputs.DatetimeInput()
+        elif isinstance(field_model, IntEnumFieldInstance):
+            mapping = {}
+            for e in field_model.enum_type:
+                mapping[e.value] = e.name
+            display = displays.EnumDisplay(enum=field_model.enum_type, options=mapping)
+            input_ = inputs.Enum(enum=field_model.enum_type)
+        elif isinstance(field_model, CharEnumFieldInstance):
+            mapping = {}
+            for e in field_model.enum_type:
+                mapping[e.value] = e.name
+            display = displays.EnumDisplay(enum=field_model.enum_type, options=mapping)
+            input_ = inputs.Enum(enum=field_model.enum_type)
+        elif isinstance(field_model, ForeignKeyFieldInstance):
+            remote_model = field_model.related_model
+            display = displays.Display()
+            input_ = inputs.ForeignKey(model=remote_model)
+        elif isinstance(field_model, ManyToManyFieldInstance):
+            remote_model = field_model.related_model
+            display = displays.Display()
+            input_ = inputs.ManyToMany(model=remote_model)
+        elif isinstance(field_model, BooleanField):
+            display = displays.BooleanDisplay()
+            input_ = inputs.Input(input_type="checkbox")
+        elif isinstance(field_model, TextField):
+            display = displays.Display()
+            input_ = inputs.TextArea()
+        elif isinstance(field_model, JSONField):
+            display = displays.Json()
+            input_ = inputs.Json()
             else:
-                input_ = inputs.DateTime(null=null, default=field.default)
-            display, input_ = displays.DatetimeDisplay(), input_
-        elif isinstance(field, DateField):
-            display, input_ = displays.DateDisplay(), inputs.Date(null=null, default=field.default)
-        elif isinstance(field, IntEnumFieldInstance):
-            display, input_ = displays.Display(), inputs.Enum(
-                field.enum_type, null=null, default=field.default
-            )
-        elif isinstance(field, CharEnumFieldInstance):
-            display, input_ = displays.Display(), inputs.Enum(
-                field.enum_type, enum_type=str, null=null, default=field.default
-            )
-        elif isinstance(field, JSONField):
-            display, input_ = displays.Json(), inputs.Json(null=null)
-        elif isinstance(field, TextField):
-            display, input_ = displays.Display(), inputs.TextArea(
-                placeholder=placeholder, null=null, default=field.default
-            )
-        elif isinstance(field, IntField):
-            display, input_ = displays.Display(), inputs.Number(
-                placeholder=placeholder, null=null, default=field.default
-            )
-        elif isinstance(field, ForeignKeyFieldInstance):
-            display, input_ = displays.Display(), inputs.ForeignKey(
-                field.related_model, null=null, default=field.default
-            )
-            field_name = field.source_field
-        elif isinstance(field, ManyToManyFieldInstance):
-            display, input_ = displays.InputOnly(), inputs.ManyToMany(field.related_model)
-        return Field(name=field_name, label=label.title(), display=display, input_=input_)
+            input_type = "text"
+            if isinstance(field_model, IntField):
+                input_type = "number"
+            input_ = inputs.Input(input_type=input_type)
+        return Field(name=field_name_origin, display=display, input_=input_)
+
+    @classmethod
+    async def _filter_fields_by_permission(cls, request: Request, action: PermissionAction) -> List[Field]:
+        """Фильтрует поля в соответствии с правами доступа"""
+        fields = cls.get_fields(is_display=action == PermissionAction.READ)
+        
+        provider = getattr(request.state, "permission_provider", None)
+        admin = getattr(request.state, "admin", None)
+        
+        # Если нет провайдера или пользователя, возвращаем все поля
+        if not provider or not admin:
+            return fields
+            
+        model_name = cls.model.__name__.lower()
+        return await provider.filter_fields(admin, model_name, action, fields)
 
     @classmethod
     def get_fields(cls, is_display: bool = True):
         ret = []
-        pk_column = cls.model._meta.db_pk_column
-        for field in cls.fields or cls.model._meta.fields:
+        for field in cls.fields:
             if isinstance(field, str):
-                if field == pk_column:
-                    continue
                 field = cls._get_display_input_field(field)
-            if isinstance(field, ComputeField) and not is_display:
-                continue
-            elif isinstance(field, Field):
-                if field.name == pk_column:
-                    continue
-                if (is_display and isinstance(field.display, displays.InputOnly)) or (
-                    not is_display and isinstance(field.input, inputs.DisplayOnly)
-                ):
-                    continue
-            if (
-                field.name in cls.model._meta.fetch_fields
-                and field.name not in cls.model._meta.fk_fields | cls.model._meta.m2m_fields
-            ):
-                continue
+            if isinstance(field, Field):
+                if is_display:
+                    field.input = inputs.DisplayOnly()
             ret.append(field)
-        ret.insert(0, cls._get_display_input_field(pk_column))
         return ret
 
     @classmethod
     def get_fields_label(cls, display: bool = True):
-        return cls._get_fields_attr("label", display)
+        return cls._get_fields_attr("label", display=display)
 
     @classmethod
     def get_m2m_field(cls):
-        ret = []
-        for field in cls.fields or cls.model._meta.fields:
-            if isinstance(field, Field):
-                field = field.name
-            if field in cls.model._meta.m2m_fields:
-                ret.append(field)
+        ret = {}
+        for field_name in cls.model._meta.m2m_fields:
+            field_model = cls.model._meta.fields_map[field_name]
+            ret[field_name] = field_model
         return ret
 
     @classmethod
     def get_fk_field(cls):
-        ret = []
-        for field in cls.fields or cls.model._meta.fields:
-            if isinstance(field, Field):
-                field = field.name
-            if field in cls.model._meta.fk_fields:
-                ret.append(field)
+        ret = {}
+        for field_name in cls.model._meta.fk_fields:
+            field_model = cls.model._meta.fields_map[field_name]
+            ret[field_name] = field_model
         return ret
 
 
