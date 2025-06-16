@@ -305,7 +305,7 @@ class Model(Resource):
         elif isinstance(field_model, JSONField):
             display = displays.Json()
             input_ = inputs.Json()
-            else:
+        else:
             input_type = "text"
             if isinstance(field_model, IntField):
                 input_type = "number"
