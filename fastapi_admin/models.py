@@ -14,8 +14,8 @@ class Permission(Model):
     id = fields.IntField(pk=True)
     model_resource = fields.CharField(max_length=100)
     action = fields.CharEnumField(PermissionAction)
-    fields = fields.JSONField(default=dict)
     conditions = fields.JSONField(default=dict)
+    fields = fields.JSONField(default=dict)
 
     class Meta:
         table = "fastapi_admin_permission"

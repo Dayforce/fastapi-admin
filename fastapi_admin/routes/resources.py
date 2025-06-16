@@ -235,12 +235,13 @@ async def create(
     form = await request.form()
     data, m2m_data = await model_resource.resolve_data(request, form)
     obj = await model.create(**data)
-        for k, items in m2m_data.items():
+    for k, items in m2m_data.items():
         m2m_obj = getattr(obj, k)
         if items:
             await m2m_obj.add(*items)
     if "save" in form:
         return redirect(request, "update_view", resource=resource, pk=obj.pk)
+    else:
         return redirect(request, "list_view", resource=resource)
 
 
