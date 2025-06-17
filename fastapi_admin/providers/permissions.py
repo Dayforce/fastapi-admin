@@ -224,4 +224,65 @@ async def check_model_permission(
             detail=f"No permission for {action} on {model_resource}",
         )
     
-    return True 
+    return True
+
+# Добавляем функции-помощники для разных типов разрешений
+def require_read_permission():
+    """Проверка на право чтения ресурса"""
+    async def check_permission(
+        request: Request,
+        provider: PermissionProvider = Depends(get_permission_provider),
+        admin: AbstractAdmin = Depends(get_current_admin),
+    ):
+        return await check_model_permission(
+            request=request,
+            action=PermissionAction.READ,
+            provider=provider,
+            admin=admin
+        )
+    return Depends(check_permission)
+
+def require_create_permission():
+    """Проверка на право создания ресурса"""
+    async def check_permission(
+        request: Request,
+        provider: PermissionProvider = Depends(get_permission_provider),
+        admin: AbstractAdmin = Depends(get_current_admin),
+    ):
+        return await check_model_permission(
+            request=request,
+            action=PermissionAction.CREATE,
+            provider=provider,
+            admin=admin
+        )
+    return Depends(check_permission)
+
+def require_update_permission():
+    """Проверка на право обновления ресурса"""
+    async def check_permission(
+        request: Request,
+        provider: PermissionProvider = Depends(get_permission_provider),
+        admin: AbstractAdmin = Depends(get_current_admin),
+    ):
+        return await check_model_permission(
+            request=request,
+            action=PermissionAction.UPDATE,
+            provider=provider,
+            admin=admin
+        )
+    return Depends(check_permission)
+
+def require_delete_permission():
+    """Проверка на право удаления ресурса"""
+    async def check_permission(
+        request: Request,
+        provider: PermissionProvider = Depends(get_permission_provider),
+        admin: AbstractAdmin = Depends(get_current_admin),
+    ):
+        return await check_model_permission(
+            request=request,
+            action=PermissionAction.DELETE,
+            provider=provider,
+            admin=admin
+        )
+    return Depends(check_permission) 

@@ -11,7 +11,7 @@ from tortoise.transactions import in_transaction
 
 from fastapi_admin.depends import get_model, get_model_resource, get_resources
 from fastapi_admin.models import PermissionAction
-from fastapi_admin.providers.permissions import check_model_permission
+from fastapi_admin.providers.permissions import require_read_permission, require_create_permission, require_update_permission, require_delete_permission
 from fastapi_admin.resources import Model as ModelResource
 from fastapi_admin.resources import render_values
 from fastapi_admin.responses import redirect
@@ -30,7 +30,7 @@ async def list_view(
     page_size: int = 10,
     page_num: int = 1,
     order_by: Optional[str] = None,
-    _: bool = Depends(lambda r: check_model_permission(r, PermissionAction.READ)),
+    _=require_read_permission(),
 ):
     fields_label = model_resource.get_fields_label()
     fields = await model_resource._filter_fields_by_permission(request, PermissionAction.READ)
@@ -105,7 +105,7 @@ async def update(
     model_resource: ModelResource = Depends(get_model_resource),
     resources=Depends(get_resources),
     model=Depends(get_model),
-    _: bool = Depends(lambda r: check_model_permission(r, PermissionAction.UPDATE)),
+    _=require_update_permission(),
 ):
     form = await request.form()
     data, m2m_data = await model_resource.resolve_data(request, form)
@@ -165,7 +165,7 @@ async def update_view(
     model_resource: ModelResource = Depends(get_model_resource),
     resources=Depends(get_resources),
     model=Depends(get_model),
-    _: bool = Depends(lambda r: check_model_permission(r, PermissionAction.UPDATE)),
+    _=require_update_permission(),
 ):
     obj = await model.get(pk=pk)
     inputs = await model_resource.get_inputs(request, obj)
@@ -198,7 +198,7 @@ async def create_view(
     resource: str = Path(...),
     resources=Depends(get_resources),
     model_resource: ModelResource = Depends(get_model_resource),
-    _: bool = Depends(lambda r: check_model_permission(r, PermissionAction.CREATE)),
+    _=require_create_permission(),
 ):
     inputs = await model_resource.get_inputs(request)
     context = {
@@ -230,7 +230,7 @@ async def create(
     resources=Depends(get_resources),
     model_resource: ModelResource = Depends(get_model_resource),
     model=Depends(get_model),
-    _: bool = Depends(lambda r: check_model_permission(r, PermissionAction.CREATE)),
+    _=require_create_permission(),
 ):
     form = await request.form()
     data, m2m_data = await model_resource.resolve_data(request, form)
@@ -251,7 +251,7 @@ async def delete(
     pk: str, 
     model: Model = Depends(get_model),
     resource: str = Path(...),
-    _: bool = Depends(lambda r: check_model_permission(r, PermissionAction.DELETE)),
+    _=require_delete_permission(),
 ):
     await model.filter(pk=pk).delete()
 
@@ -262,6 +262,6 @@ async def bulk_delete(
     ids: str, 
     model: Model = Depends(get_model),
     resource: str = Path(...),
-    _: bool = Depends(lambda r: check_model_permission(r, PermissionAction.DELETE)),
+    _=require_delete_permission(),
 ):
     await model.filter(pk__in=ids.split(",")).delete()
